@@ -4055,6 +4055,10 @@ class Generator:
         fmt = self.sql(expression, "format")
         return f"{this} (FORMAT {fmt})"
 
+    def teradataformatphrase_sql(self, expression: exp.TeradataFormatPhrase) -> str:
+        self.unsupported("Teradata FORMAT-only CAST is not supported")
+        return self.sql(expression, "this")
+
     def _jsonobject_sql(
         self, expression: exp.JSONObject | exp.JSONObjectAgg, name: str = ""
     ) -> str:

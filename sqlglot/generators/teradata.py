@@ -111,10 +111,13 @@ class TeradataGenerator(generator.Generator):
 
     def cast_sql(self, expression: exp.Cast, safe_prefix: str | None = None) -> str:
         if expression.to.this == exp.DType.UNKNOWN and expression.args.get("format"):
-            # We don't actually want to print the unknown type in CAST(<value> AS FORMAT <format>)
+            expression = expression.copy()
             expression.to.pop()
 
         return super().cast_sql(expression, safe_prefix=safe_prefix)
+
+    def teradataformatphrase_sql(self, expression: exp.TeradataFormatPhrase) -> str:
+        return f"CAST({self.sql(expression, 'this')} AS FORMAT {self.sql(expression, 'format')})"
 
     def trycast_sql(self, expression: exp.TryCast) -> str:
         return self.cast_sql(expression, safe_prefix="TRY")

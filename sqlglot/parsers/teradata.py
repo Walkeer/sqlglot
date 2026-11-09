@@ -32,6 +32,20 @@ class TeradataParser(parser.Parser):
     TABLESAMPLE_CSV = True
     VALUES_FOLLOWED_BY_PAREN = False
 
+    def build_cast(self, strict: bool, **kwargs) -> exp.Expr:
+        to = kwargs.get("to")
+        fmt = kwargs.get("format")
+        if strict and isinstance(to, exp.DataType) and to.this == exp.DType.UNKNOWN:
+            if not fmt:
+                self.raise_error("Expected format string in FORMAT-only CAST")
+            if not any(kwargs.get(key) for key in ("safe", "action", "default")):
+                if self._curr.token_type != TokenType.R_PAREN:
+                    self.raise_error("Expected ) after FORMAT-only CAST")
+                return self.expression(
+                    exp.TeradataFormatPhrase(this=kwargs.get("this"), format=fmt)
+                )
+        return super().build_cast(strict, **kwargs)
+
     TABLE_ALIAS_TOKENS = parser.Parser.TABLE_ALIAS_TOKENS | {
         TokenType.ANTI,
         TokenType.SEMI,

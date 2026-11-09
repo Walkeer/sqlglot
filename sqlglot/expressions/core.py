@@ -2318,6 +2318,18 @@ class FormatPhrase(Expression):
     arg_types = {"this": True, "format": True}
 
 
+class TeradataFormatPhrase(FormatPhrase):
+    """A FORMAT-only CAST in Teradata, with no datatype conversion target."""
+
+    @property
+    def name(self) -> str:
+        return self.this.name
+
+    @property
+    def output_name(self) -> str:
+        return self.this.output_name
+
+
 class Between(Expression, Predicate):
     arg_types = {"this": True, "low": True, "high": True, "symmetric": False}
 

@@ -378,6 +378,47 @@ class TestTeradata(Validator):
             "SELECT CAST(Col1 AS INT) FROM Test1",
         )
 
+    def test_format_only_cast(self):
+        from sqlglot.optimizer.annotate_types import annotate_types
+
+        for sql in (
+            "SELECT CAST(x AS FORMAT '999') FROM t",
+            "SELECT CAST(x + 1 AS FORMAT '999') AS result FROM t",
+            "SELECT CAST(CAST(x AS FORMAT '999') AS FORMAT '9999') FROM t",
+            "SELECT CAST(COALESCE(x, 1) AS FORMAT '999') FROM t",
+        ):
+            with self.subTest(sql=sql):
+                expression = self.validate_identity(sql)
+                self.assertTrue(expression.find(exp.TeradataFormatPhrase))
+                self.assertIsNone(expression.find(exp.DataType))
+                self.assertEqual(expression, exp.Expr.load(expression.dump()))
+                self.assertEqual(expression, self.parse_one(sql))
+                before = expression.dump()
+                self.assertEqual(sql, expression.sql("teradata", copy=False))
+                self.assertEqual(before, expression.dump())
+
+        expression = annotate_types(self.parse_one("SELECT CAST(1 AS FORMAT '999')"))
+        self.assertTrue(expression.expressions[0].is_type(exp.DType.INT))
+        expression = self.parse_one("SELECT CAST(x AS FORMAT '999') FROM t")
+        self.assertEqual(expression.expressions[0].output_name, "x")
+        self.assertEqual([column.name for column in expression.find_all(exp.Column)], ["x"])
+        with self.assertRaises(UnsupportedError):
+            expression.sql("postgres", unsupported_level=ErrorLevel.RAISE)
+
+        for sql in ("SELECT CAST(x AS FORMAT)", "SELECT CAST(x AS FORMAT '999'"):
+            with self.subTest(sql=sql), self.assertRaises(ParseError):
+                self.parse_one(sql, error_level=ErrorLevel.RAISE)
+
+        typed = self.parse_one("CAST(x AS INTEGER)").assert_is(exp.Cast)
+        self.assertEqual(typed.to.this, exp.DType.INT)
+        self.assertIsInstance(self.parse_one("TRYCAST(x AS INTEGER)"), exp.TryCast)
+        legacy = exp.Cast(
+            this=exp.column("x"), to=exp.DType.UNKNOWN.into_expr(), format=exp.Literal.string("999")
+        )
+        before = legacy.dump()
+        self.assertEqual(legacy.sql("teradata", copy=False), "CAST(x AS FORMAT '999')")
+        self.assertEqual(before, legacy.dump())
+
     def test_time(self):
         self.validate_identity("CAST(CURRENT_TIMESTAMP(6) AS TIMESTAMP WITH TIME ZONE)")
 
