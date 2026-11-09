@@ -550,6 +550,9 @@ class Generator:
     # Whether EXCLUDE in window specification is supported
     SUPPORTS_WINDOW_EXCLUDE = False
 
+    # Whether RESET WHEN is supported in an analytic window
+    SUPPORTS_WINDOW_RESET = False
+
     # Whether or not set op modifiers apply to the outer set op or select.
     # SELECT * FROM x UNION SELECT * FROM y LIMIT 1
     # True means limit 1 happens after the set op, False means it it happens on y.
@@ -3730,6 +3733,12 @@ class Generator:
         order = expression.args.get("order")
         order = self.order_sql(order, flat=True) if order else ""
         spec = self.sql(expression, "spec")
+        reset_when = ""
+        if expression.args.get("reset_when") is not None:
+            if self.SUPPORTS_WINDOW_RESET:
+                reset_when = f"RESET WHEN {self.sql(expression, 'reset_when')}"
+            else:
+                self.unsupported("RESET WHEN is not supported")
         alias = self.sql(expression, "alias")
         over = self.sql(expression, "over") or "OVER"
 
@@ -3741,14 +3750,14 @@ class Generator:
         else:
             first = "FIRST" if first else "LAST"
 
-        if not partition and not order and not spec and alias:
+        if not partition and not order and not reset_when and not spec and alias:
             # WINDOW w2 AS w1 is unparseable in DuckDB/Postgres; parens are required.
             if expression.arg_key == "windows":
                 return f"{this} ({alias})"
             return f"{this} {alias}"
 
         args = self.format_args(
-            *[arg for arg in (alias, first, partition, order, spec) if arg], sep=" "
+            *[arg for arg in (alias, first, partition, order, reset_when, spec) if arg], sep=" "
         )
         return f"{this} ({args})"
 

@@ -1071,7 +1071,7 @@ def eliminate_window_clause(expression: exp.Expr) -> exp.Expr:
                 return
 
             window.set("alias", None)
-            for key in ("partition_by", "order", "spec"):
+            for key in ("partition_by", "order", "spec", "reset_when"):
                 arg: exp.Expr | None = inherited_window.args.get(key)
                 if arg is not None:
                     window.set(key, arg.copy())

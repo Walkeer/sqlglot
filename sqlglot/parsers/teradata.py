@@ -31,6 +31,7 @@ def is_window_aggregate(window: exp.Window) -> bool:
 class TeradataParser(parser.Parser):
     TABLESAMPLE_CSV = True
     VALUES_FOLLOWED_BY_PAREN = False
+    SUPPORTS_WINDOW_RESET = True
 
     TABLE_ALIAS_TOKENS = parser.Parser.TABLE_ALIAS_TOKENS | {
         TokenType.ANTI,

@@ -1934,6 +1934,8 @@ class UnpivotColumns(Expression):
 
 
 class Window(Expression, Condition):
+    """An analytic window; reset_when starts a dynamic subpartition in Teradata."""
+
     arg_types = {
         "this": True,
         "partition_by": False,
@@ -1942,6 +1944,7 @@ class Window(Expression, Condition):
         "alias": False,
         "over": False,
         "first": False,
+        "reset_when": False,
     }
 
 

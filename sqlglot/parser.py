@@ -2015,6 +2015,9 @@ class Parser:
     # e.g. NTH_VALUE(x, 2) FROM LAST IGNORE NULLS OVER (...) (Oracle, Snowflake)
     SUPPORTS_NTH_VALUE_FROM_MODIFIER: t.ClassVar = False
 
+    # Whether RESET WHEN can start a dynamic subpartition inside an analytic window
+    SUPPORTS_WINDOW_RESET: t.ClassVar = False
+
     # Type names that denote a different type when they're quoted, so quoting has to be
     # preserved instead of resolving them into the built-in type of the same name. These
     # are matched case sensitively, e.g. PostgreSQL's one-byte "char" is not CHAR
@@ -9092,6 +9095,13 @@ class Parser:
             first = False
 
         partition, order = self._parse_partition_and_order()
+        reset_when = None
+        if self.SUPPORTS_WINDOW_RESET and self._match_text_seq("RESET", "WHEN"):
+            reset_when = self._parse_assignment()
+            if reset_when is None:
+                self.raise_error("Expected RESET WHEN condition")
+            if order is None:
+                self.raise_error("RESET WHEN requires ORDER BY")
         kind = (
             self._match_set((TokenType.ROWS, TokenType.RANGE)) or self._match_text_seq("GROUPS")
         ) and self._prev.text
@@ -9131,6 +9141,7 @@ class Parser:
                 alias=window_alias,
                 over=over,
                 first=first,
+                reset_when=reset_when,
             ),
             comments=comments,
         )

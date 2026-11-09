@@ -5,6 +5,79 @@ from tests.dialects.test_dialect import Validator
 class TestTeradata(Validator):
     dialect = "teradata"
 
+    def test_window_reset(self):
+        for sql in (
+            "SELECT SUM(value) OVER (ORDER BY seq RESET WHEN value < 0) FROM events",
+            "SELECT SUM(value) OVER (PARTITION BY category ORDER BY seq "
+            "RESET WHEN flag = 1 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM events",
+            "SELECT ROW_NUMBER() OVER (ORDER BY seq RESET WHEN value IS NULL) FROM events",
+            "SELECT SUM(value) OVER (ORDER BY seq RESET WHEN "
+            "value <= SUM(value) OVER (ORDER BY seq ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING)) "
+            "FROM events",
+            "SELECT SUM(value) OVER (ORDER BY seq DESC RESET WHEN flag = 1 OR value < 0) "
+            "FROM events QUALIFY ROW_NUMBER() OVER (ORDER BY seq) = 1",
+        ):
+            with self.subTest(sql=sql):
+                tree = self.validate_identity(sql)
+                self.assertEqual(tree, exp.Expr.load(tree.dump()))
+                self.assertEqual(tree, self.parse_one(tree.sql(dialect=self.dialect)))
+                self.assertIsNotNone(tree.find(exp.Window).args.get("reset_when"))
+                self.assertIn("RESET WHEN", tree.sql(dialect=self.dialect, copy=False))
+                self.assertIsNotNone(tree.find(exp.Window).args.get("reset_when"))
+                for target in ("postgres", "spark", "snowflake"):
+                    with self.assertRaises(UnsupportedError):
+                        tree.sql(dialect=target, unsupported_level=ErrorLevel.RAISE)
+
+        tree = self.parse_one(
+            "SELECT SUM(value) OVER (ORDER BY seq RESET WHEN flag = 1) AS total FROM events"
+        )
+        window = tree.find(exp.Window)
+        self.assertEqual(window.args["reset_when"].this.name, "flag")
+        self.assertEqual(
+            {column.name for column in window.find_all(exp.Column)}, {"value", "seq", "flag"}
+        )
+        from sqlglot.optimizer import optimize
+
+        optimized = optimize(
+            tree,
+            schema={"events": {"value": "INT", "seq": "INT", "flag": "INT"}},
+            dialect=self.dialect,
+        )
+        self.assertIsNotNone(optimized.find(exp.Window).args.get("reset_when"))
+        self.assertEqual(optimized.find(exp.Window).args["reset_when"].type.this, exp.DType.BOOLEAN)
+
+        from sqlglot.transforms import eliminate_window_clause
+
+        inherited = window.copy()
+        inherited.set("this", exp.to_identifier("w"))
+        tree.set("windows", [inherited])
+        for key in ("partition_by", "order", "spec", "reset_when"):
+            window.set(key, None)
+        window.set("alias", exp.to_identifier("w"))
+        eliminate_window_clause(tree)
+        self.assertIsNotNone(window.args.get("reset_when"))
+        self.assertIsNone(tree.args.get("windows"))
+
+    def test_window_reset_errors(self):
+        for sql in (
+            "SELECT SUM(value) OVER (ORDER BY seq RESET WHEN) FROM events",
+            "SELECT SUM(value) OVER (RESET WHEN flag = 1) FROM events",
+            "SELECT SUM(value) OVER (PARTITION BY category RESET WHEN flag = 1) FROM events",
+            "SELECT SUM(value) OVER (ORDER BY seq RESET flag = 1) FROM events",
+            "SELECT SUM(value) OVER (ORDER BY seq RESET WHEN flag = 1 RESET WHEN value < 0) "
+            "FROM events",
+        ):
+            with self.subTest(sql=sql), self.assertRaises(ParseError):
+                self.parse_one(sql, error_level=ErrorLevel.RAISE)
+
+        for dialect in ("postgres", "spark"):
+            with self.subTest(dialect=dialect), self.assertRaises(ParseError):
+                parse(
+                    "SELECT SUM(value) OVER (ORDER BY seq RESET WHEN flag = 1) FROM events",
+                    read=dialect,
+                    error_level=ErrorLevel.RAISE,
+                )
+
     def test_execute(self):
         for sql, expected in (
             ("EXEC example_macro", "EXECUTE example_macro"),
