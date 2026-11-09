@@ -497,6 +497,16 @@ class HexString(Expression, Condition):
     is_primitive = True
 
 
+class TeradataHexString(Expression, Condition):
+    """An XC/XCV (VARCHAR) or XCF (CHAR) literal, not a binary literal.
+
+    The digits are preserved without assuming a session character set.
+    """
+
+    arg_types = {"this": True, "is_char": False}
+    is_primitive = True
+
+
 class ByteString(Expression, Condition):
     arg_types = {"this": True, "is_bytes": False}
     is_primitive = True

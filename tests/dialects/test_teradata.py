@@ -378,6 +378,59 @@ class TestTeradata(Validator):
             "SELECT CAST(Col1 AS INT) FROM Test1",
         )
 
+    def test_hexadecimal_character_literals(self):
+        for sql, expected in (
+            ("SELECT '0A'XC", None),
+            ("SELECT ''XC", None),
+            ("SELECT 'ABC'XC", None),
+            ("SELECT '41'XCF", None),
+            ("SELECT '41'XCV", "SELECT '41'XC"),
+            ("SELECT 'aB'xcf", "SELECT 'aB'XCF"),
+            ("SELECT 'aB'xc AS value", "SELECT 'aB'XC AS value"),
+            ("SELECT '4142'XC || '43'XC", None),
+            ("SELECT COALESCE('41'XC, '42'XC)", None),
+            ("SELECT x FROM t WHERE x = '41'XC", None),
+            ("SELECT CAST('41'XC AS VARCHAR(2))", None),
+            ("SELECT '41'XC (FORMAT 'X(1)')", None),
+        ):
+            with self.subTest(sql=sql):
+                expression = self.validate_identity(sql, expected)
+                self.assertIsInstance(expression.find(exp.TeradataHexString), exp.TeradataHexString)
+                self.assertIsNone(expression.find(exp.HexString))
+                self.assertEqual(expression, exp.Expr.load(expression.dump()))
+                self.assertEqual(expression, self.parse_one(expected or sql))
+
+        for sql in ("SELECT '41'XC '42'XC", "SELECT 'a' '41'XC", "SELECT '41'XC 'b'"):
+            with self.subTest(sql=sql):
+                expression = self.parse_one(sql)
+                self.assertIsInstance(expression.expressions[0], exp.Concat)
+                self.assertEqual(len(expression.expressions[0].expressions), 2)
+                self.assertTrue(expression.find(exp.TeradataHexString))
+                self.assertEqual(expression, self.parse_one(expression.sql("teradata")))
+
+        expression = self.parse_one("SELECT '41' XC")
+        self.assertIsInstance(expression.expressions[0].this, exp.Literal)
+        self.assertIsNone(expression.find(exp.TeradataHexString))
+        self.assertIsInstance(self.parse_one("SELECT X'41'").expressions[0], exp.HexString)
+
+        literal = self.parse_one("SELECT '41'XC").expressions[0]
+        self.assertEqual(literal.this, "41")
+        self.assertEqual(literal.meta["start"], 7)
+        self.assertEqual(literal.meta["end"], 12)
+        self.assertEqual(literal.meta["col"], 13)
+
+        from sqlglot.optimizer.annotate_types import annotate_types
+
+        expression = annotate_types(self.parse_one("SELECT '41'XC"), dialect="teradata")
+        self.assertTrue(expression.expressions[0].is_type(exp.DType.VARCHAR))
+        expression = annotate_types(self.parse_one("SELECT '41'XCF"), dialect="teradata")
+        self.assertTrue(expression.expressions[0].is_type(exp.DType.CHAR))
+        for sql in ("SELECT 'GG'XC", "SELECT 'GG'XCF", "SELECT '4 1'XC", "SELECT 'a''b'XC"):
+            with self.subTest(sql=sql), self.assertRaises(ParseError):
+                self.parse_one(sql, error_level=ErrorLevel.RAISE)
+        with self.assertRaises(UnsupportedError):
+            literal.sql("postgres", unsupported_level=ErrorLevel.RAISE)
+
     def test_time(self):
         self.validate_identity("CAST(CURRENT_TIMESTAMP(6) AS TIMESTAMP WITH TIME ZONE)")
 

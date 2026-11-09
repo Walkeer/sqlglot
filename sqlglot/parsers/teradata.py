@@ -4,7 +4,7 @@ import typing as t
 
 from sqlglot import exp, parser
 from sqlglot.helper import seq_get
-from sqlglot.tokens import TokenType
+from sqlglot.tokens import Token, TokenType
 from sqlglot.trie import new_trie
 
 # Ranking and navigation functions don't take a frame and FIRST_VALUE/LAST_VALUE have their own default
@@ -31,6 +31,66 @@ def is_window_aggregate(window: exp.Window) -> bool:
 class TeradataParser(parser.Parser):
     TABLESAMPLE_CSV = True
     VALUES_FOLLOWED_BY_PAREN = False
+
+    HEX_CHARACTER_SUFFIXES: t.ClassVar[frozenset[str]] = frozenset(("XC", "XCV", "XCF"))
+
+    PRIMARY_PARSERS = {
+        **parser.Parser.PRIMARY_PARSERS,
+        TokenType.STRING: lambda self, token: self._parse_character_string(token),
+    }
+
+    def _parse_character_string(self, token: Token, adjacent: bool = False) -> exp.Expr:
+        if (
+            self._curr.token_type == TokenType.VAR
+            and self._curr.text.upper() in self.HEX_CHARACTER_SUFFIXES
+            and self._curr.start == token.end + 1
+        ):
+            suffix = self._curr
+            self._advance()
+            if any(character not in "0123456789abcdefABCDEF" for character in token.text):
+                self.raise_error("Invalid hexadecimal character literal")
+            this = self.expression(
+                exp.TeradataHexString(this=token.text, is_char=suffix.text.upper() == "XCF"),
+                token,
+            )
+            this.meta["end"] = suffix.end
+            this.meta["col"] = suffix.col
+            return this
+
+        if adjacent:
+            return exp.Literal.string(token.text)
+        return self.expression(exp.Literal(this=token.text, is_string=True), token)
+
+    def _parse_atom(self) -> exp.Expr | None:
+        # A suffix must not hide adjacent strings or column operations.
+        if (
+            self._curr.token_type == TokenType.STRING
+            and self._next.text.upper() in self.HEX_CHARACTER_SUFFIXES
+            and self._next.start == self._curr.end + 1
+            and self._index + 2 < len(self._tokens)
+            and (
+                self._tokens[self._index + 2].token_type == TokenType.STRING
+                or self._tokens[self._index + 2].token_type in self.COLUMN_POSTFIX_TOKENS
+                or self._tokens[self._index + 2].token_type in self.COLUMN_OPERATORS
+            )
+        ):
+            return None
+        return super()._parse_atom()
+
+    def _parse_primary(self) -> exp.Expr | None:
+        if not self._match(TokenType.STRING):
+            return super()._parse_primary()
+
+        expressions = [self._parse_character_string(self._prev)]
+        while self._match(TokenType.STRING):
+            expressions.append(self._parse_character_string(self._prev, adjacent=True))
+
+        if len(expressions) > 1:
+            concat = exp.Concat(expressions=expressions, coalesce=self.dialect.CONCAT_COALESCE)
+            if any(isinstance(expression, exp.TeradataHexString) for expression in expressions):
+                concat.set("safe", True)
+            return self.expression(concat)
+        return expressions[0]
 
     TABLE_ALIAS_TOKENS = parser.Parser.TABLE_ALIAS_TOKENS | {
         TokenType.ANTI,

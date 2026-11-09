@@ -400,6 +400,11 @@ EXPRESSION_METADATA: ExprMetadataType = {
             exp.DType.BIGINT if e.args.get("is_integer") else exp.DType.BINARY,
         )
     },
+    exp.TeradataHexString: {
+        "annotator": lambda self, e: self._set_type(
+            e, exp.DType.CHAR if e.args.get("is_char") else exp.DType.VARCHAR
+        )
+    },
     exp.GenerateSeries: {
         "annotator": lambda self, e: self._annotate_by_args(e, "start", "end", "step", array=True)
     },

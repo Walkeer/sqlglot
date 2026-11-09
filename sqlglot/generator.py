@@ -1682,6 +1682,11 @@ class Generator:
 
         return f"{self.dialect.HEX_START}{this}{self.dialect.HEX_END}"
 
+    def teradatahexstring_sql(self, expression: exp.TeradataHexString) -> str:
+        self.unsupported("Teradata hexadecimal character literal transcoding is not supported")
+        suffix = "XCF" if expression.args.get("is_char") else "XC"
+        return f"{self.sql(exp.Literal.string(expression.this))}{suffix}"
+
     def bytestring_sql(self, expression: exp.ByteString) -> str:
         this = self.sql(expression, "this")
         is_bytes = bool(expression.args.get("is_bytes"))

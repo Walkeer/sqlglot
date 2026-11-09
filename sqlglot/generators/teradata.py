@@ -109,6 +109,10 @@ class TeradataGenerator(generator.Generator):
         prefix, suffix = ("(", ")") if expression.this else ("", "")
         return self.func("CURRENT_TIMESTAMP", expression.this, prefix=prefix, suffix=suffix)
 
+    def teradatahexstring_sql(self, expression: exp.TeradataHexString) -> str:
+        suffix = "XCF" if expression.args.get("is_char") else "XC"
+        return f"{self.sql(exp.Literal.string(expression.this))}{suffix}"
+
     def cast_sql(self, expression: exp.Cast, safe_prefix: str | None = None) -> str:
         if expression.to.this == exp.DType.UNKNOWN and expression.args.get("format"):
             # We don't actually want to print the unknown type in CAST(<value> AS FORMAT <format>)
