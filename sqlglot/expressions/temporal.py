@@ -6,6 +6,7 @@ import typing as t
 
 from sqlglot.expressions.core import (
     Expression,
+    Condition,
     Func,
     TimeUnit,
     IntervalOp,
@@ -107,6 +108,12 @@ class DatetimeAdd(Expression, Func, IntervalOp):
 
 class DatetimeDiff(Expression, Func, TimeUnit):
     arg_types = {"this": True, "expression": True, "unit": False, "date_part_boundary": False}
+
+
+class TeradataDatetimeDiff(Expression, Condition):
+    """An interval-valued datetime difference with a single-field leading precision."""
+
+    arg_types = {"this": True, "expression": True, "unit": True, "precision": True}
 
 
 class DatetimeSub(Expression, Func, IntervalOp):

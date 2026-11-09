@@ -5,6 +5,68 @@ from tests.dialects.test_dialect import Validator
 class TestTeradata(Validator):
     dialect = "teradata"
 
+    def test_qualified_datetime_difference(self):
+        for sql in (
+            "SELECT (finished_at - started_at) DAY(4) FROM events",
+            "SELECT (finished_at - started_at) YEAR(2) AS elapsed FROM events",
+            "SELECT (finished_at - started_at) MONTH(3) FROM events",
+            "SELECT (finished_at - started_at) HOUR(4) FROM events",
+            "SELECT (finished_at - started_at) MINUTE(4) FROM events",
+            "SELECT (finished_at - started_at) SECOND(4) FROM events",
+            "SELECT CAST((finished_at - started_at) DAY(4) AS VARCHAR(20)) FROM events",
+            "SELECT ((finished_at - started_at) DAY(4)) FROM events",
+            "SELECT ((finished_at + INTERVAL '1' DAY) - started_at) DAY(4) FROM events",
+            "SELECT (finished_at - (started_at + INTERVAL '1' DAY)) DAY(4) FROM events",
+        ):
+            with self.subTest(sql=sql):
+                tree = self.validate_identity(sql)
+                self.assertEqual(tree, exp.Expr.load(tree.dump()))
+                self.assertEqual(tree, self.parse_one(tree.sql(dialect=self.dialect)))
+                difference = tree.find(exp.TeradataDatetimeDiff)
+                self.assertIsNotNone(difference)
+                self.assertIsNone(tree.find(exp.DateDiff))
+                self.assertEqual(
+                    {column.name for column in difference.find_all(exp.Column)},
+                    {"finished_at", "started_at"},
+                )
+                before = tree.dump()
+                tree.sql(dialect=self.dialect, copy=False)
+                self.assertEqual(tree.dump(), before)
+                for target in ("postgres", "spark", "snowflake"):
+                    with self.assertRaises(UnsupportedError):
+                        tree.sql(dialect=target, unsupported_level=ErrorLevel.RAISE)
+
+        from sqlglot.optimizer import optimize
+
+        tree = self.parse_one("SELECT (finished_at - finished_at) DAY(4) AS elapsed FROM events")
+        optimized = optimize(
+            tree, schema={"events": {"finished_at": "TIMESTAMP"}}, dialect=self.dialect
+        )
+        difference = optimized.find(exp.TeradataDatetimeDiff)
+        self.assertIsNotNone(difference)
+        self.assertEqual(difference.type.this, exp.DType.INTERVAL)
+        self.assertEqual(difference.args["precision"], exp.Literal.number(4))
+        self.assertEqual(difference.this.name, "finished_at")
+        self.assertEqual(difference.expression.name, "finished_at")
+
+        for sql in ("SELECT (a - b) AS day FROM events", "SELECT (a - b) day FROM events"):
+            with self.subTest(sql=sql):
+                self.assertIsNone(self.parse_one(sql).find(exp.TeradataDatetimeDiff))
+
+    def test_qualified_datetime_difference_errors(self):
+        for sql in (
+            "SELECT (a - b) DAY() FROM events",
+            "SELECT (a - b) DAY(value) FROM events",
+            "SELECT (a - b) DAY(-1) FROM events",
+            "SELECT (a - b) DAY(0) FROM events",
+            "SELECT (a - b) DAY(5) FROM events",
+            "SELECT (a - b) DAY(1.5) FROM events",
+            "SELECT (a - b) DAY(1 + 1) FROM events",
+            "SELECT (a - b) DAY(4 FROM events",
+        ):
+            with self.subTest(sql=sql), self.assertRaises(ParseError):
+                self.parse_one(sql, error_level=ErrorLevel.RAISE)
+
     def test_execute(self):
         for sql, expected in (
             ("EXEC example_macro", "EXECUTE example_macro"),

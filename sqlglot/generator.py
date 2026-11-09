@@ -550,6 +550,9 @@ class Generator:
     # Whether EXCLUDE in window specification is supported
     SUPPORTS_WINDOW_EXCLUDE = False
 
+    # Whether interval-valued datetime subtraction with a native qualifier is supported
+    SUPPORTS_TERADATA_DATETIME_DIFF = False
+
     # Whether or not set op modifiers apply to the outer set op or select.
     # SELECT * FROM x UNION SELECT * FROM y LIMIT 1
     # True means limit 1 happens after the set op, False means it it happens on y.
@@ -4176,6 +4179,14 @@ class Generator:
 
     def in_unnest_op(self, unnest: exp.Unnest) -> str:
         return f"(SELECT {self.sql(unnest)})"
+
+    def teradatadatetimediff_sql(self, expression: exp.TeradataDatetimeDiff) -> str:
+        if not self.SUPPORTS_TERADATA_DATETIME_DIFF:
+            self.unsupported("Teradata interval-valued datetime subtraction is not supported")
+        return (
+            f"({self.sql(expression, 'this')} - {self.sql(expression, 'expression')}) "
+            f"{self.sql(expression, 'unit')}({self.sql(expression, 'precision')})"
+        )
 
     def interval_sql(self, expression: exp.Interval) -> str:
         include_keyword = not self.AUTO_REFRESH_BARE_INTERVALS or not isinstance(

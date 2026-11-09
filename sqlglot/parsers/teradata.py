@@ -84,6 +84,31 @@ class TeradataParser(parser.Parser):
         TokenType.LOCK: lambda self: self._parse_locking_statement(),
     }
 
+    def _parse_paren(self) -> exp.Expr | None:
+        this = super()._parse_paren()
+        if (
+            isinstance(this, exp.Paren)
+            and isinstance(this.this, exp.Sub)
+            and self._curr.text.upper() in {"YEAR", "MONTH", "DAY", "HOUR", "MINUTE", "SECOND"}
+            and self._next.token_type == TokenType.L_PAREN
+        ):
+            unit = exp.var(self._curr.text.upper())
+            self._advance(2)
+            precision = self._parse_number()
+            if precision is None or precision.this.lstrip("0") not in {"1", "2", "3", "4"}:
+                self.raise_error("Expected interval leading precision from 1 to 4")
+            self._match_r_paren()
+            return self.expression(
+                exp.TeradataDatetimeDiff(
+                    this=this.this.this,
+                    expression=this.this.expression,
+                    unit=unit,
+                    precision=precision,
+                ),
+                comments=this.comments,
+            )
+        return this
+
     def _parse_execute(self) -> exp.Execute | exp.Command:
         start = self._prev
         this = self._parse_table_parts(schema=True)

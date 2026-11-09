@@ -206,6 +206,7 @@ EXPRESSION_METADATA: ExprMetadataType = {
         expr_type: {"returns": exp.DType.INTERVAL}
         for expr_type in {
             exp.Interval,
+            exp.TeradataDatetimeDiff,
             exp.JustifyDays,
             exp.JustifyHours,
             exp.JustifyInterval,
