@@ -2065,6 +2065,10 @@ class TranslateCharacters(Expression):
     arg_types = {"this": True, "expression": True, "with_error": False}
 
 
+class TranslateCharactersCheck(Expression):
+    arg_types = {"this": True, "expression": True}
+
+
 class OverflowTruncateBehavior(Expression):
     arg_types = {"this": False, "with_count": True}
 

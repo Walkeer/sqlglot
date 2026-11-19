@@ -488,6 +488,38 @@ class TestTeradata(Validator):
         self.validate_identity("TRANSLATE(x USING LATIN_TO_UNICODE)")
         self.validate_identity("TRANSLATE(x USING LATIN_TO_UNICODE WITH ERROR)")
 
+    def test_translate_check(self):
+        for value, translator in (
+            ("x", "LATIN_TO_UNICODE"),
+            ("'abc'", "UNICODE_TO_LATIN"),
+            ("NULL", "UNICODE_TO_LATIN"),
+            ("COALESCE(x, 'abc')", "UNICODE_TO_LATIN"),
+        ):
+            sql = f"TRANSLATE_CHK({value} USING {translator})"
+            with self.subTest(sql=sql):
+                expression = self.validate_identity(sql).assert_is(exp.TranslateCharactersCheck)
+                self.assertEqual(expression.this, self.parse_one(value))
+                self.assertEqual(expression.expression, translator)
+                self.assertEqual(expression, self.parse_one(expression.sql("teradata")))
+
+        self.validate_identity(
+            "translate_chk(x using unicode_to_latin)",
+            "TRANSLATE_CHK(x USING UNICODE_TO_LATIN)",
+        )
+        self.validate_identity(
+            "SELECT TRANSLATE_CHK(t.x USING UNICODE_TO_LATIN) AS checked FROM t "
+            "WHERE TRANSLATE_CHK(t.x USING UNICODE_TO_LATIN) = 0"
+        )
+        for sql in (
+            "TRANSLATE_CHK(x)",
+            "TRANSLATE_CHK(x, UNICODE_TO_LATIN)",
+            "TRANSLATE_CHK(x USING)",
+            "TRANSLATE_CHK(USING UNICODE_TO_LATIN)",
+            "TRANSLATE_CHK(x USING UNICODE_TO_LATIN WITH ERROR)",
+        ):
+            with self.subTest(sql=sql), self.assertRaises(ParseError):
+                self.parse_one(sql)
+
     def test_locking(self):
         self.validate_identity("LOCKING ROW FOR ACCESS SELECT * FROM table1")
         self.validate_identity("LOCKING TABLE table1 FOR ACCESS SELECT col1, col2 FROM table1")

@@ -110,6 +110,11 @@ class TeradataGenerator(generator.Generator):
             return f"{self.sql(exp.Literal.string(expression.this))}XC"
         return super().hexstring_sql(expression, binary_function_repr)
 
+    def translatecharacterscheck_sql(self, expression: exp.TranslateCharactersCheck) -> str:
+        this = self.sql(expression, "this")
+        translator = self.sql(expression, "expression")
+        return f"TRANSLATE_CHK({this} USING {translator})"
+
     def execute_sql(self, expression: exp.Execute) -> str:
         if expression.args.get("return_status"):
             self.unsupported("Teradata EXECUTE does not support a return status")

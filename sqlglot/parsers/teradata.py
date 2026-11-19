@@ -237,6 +237,7 @@ class TeradataParser(parser.Parser):
         "TRYCAST": parser.Parser.FUNCTION_PARSERS["TRY_CAST"],
         "RANGE_N": lambda self: self._parse_rangen(),
         "TRANSLATE": lambda self: self._parse_translate(),
+        "TRANSLATE_CHK": lambda self: self._parse_translate_check(),
     }
 
     FUNCTIONS = {
@@ -264,6 +265,17 @@ class TeradataParser(parser.Parser):
                 expression=self._prev.text.upper(),
                 with_error=self._match_text_seq("WITH", "ERROR"),
             )
+        )
+
+    def _parse_translate_check(self) -> exp.TranslateCharactersCheck:
+        this = self._parse_assignment()
+        if not self._match(TokenType.USING):
+            self.raise_error("Expected USING")
+        if not self._match(TokenType.VAR):
+            self.raise_error("Expected character set translator")
+
+        return self.expression(
+            exp.TranslateCharactersCheck(this=this, expression=self._prev.text.upper())
         )
 
     def _parse_delete(self, alias_tokens: t.Collection[TokenType] | None = None) -> exp.Delete:
